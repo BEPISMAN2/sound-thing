@@ -38,8 +38,11 @@ typedef struct {
 wavFile *channels[24];
 audioStream *streaming[24];
 
-Result loadWav(const char *path, wavFile *file, int streamChunkSize);
+Result loadWav(const char *path, wavFile *wav, int streamChunkSize);
+void deleteWav(wavFile *wav);
+
 Result playWav(wavFile *file, int channel);
+void printWav(wavFile *wav);
 
 Result stopWav(int channel);
 Result stopAll();

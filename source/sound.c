@@ -129,3 +129,33 @@ Result loadWav(const char *path, wavFile *wav, int streamChunkSize) {
 	
 	return 0;
 }
+
+void deleteWav(wavFile *wav) {
+	linearFree(wav->data);
+	fclose(wav->file);
+}
+
+void printWav(wavFile *wav) {
+	printf(" -- WAV FILE --\n");
+	printf("Sample Rate: %f\n", wav->rate);
+	printf("Number of Channels: %d\n", wav->channels);
+	
+	switch (wav->encoding) {
+		case NDSP_ENCODING_PCM8:
+			printf("Encoding: NDSP_ENCODING _PCM8\n");
+			break;
+		case NDSP_ENCODING_PCM16:
+			printf("Encoding: NDSP_ENCODING_PCM16\n");
+			break;
+		default:
+			printf("!! Uncrecognized Encoding !!\n");
+			break;
+	};
+	
+	printf("Number of Samples: %d\n", wav->nSamples);
+	printf("Audio data size: %d\n", wav->size);
+	printf("Byte Per Sample: %d\n", wav->bytePerSample);
+	printf("Stream Chunk Size: %d\n", wav->chunkSize);
+	printf("Number of Samples per Chunk: %d\n", wav->chunkNSamples);
+	printf("-- END PRINT --\n\n");
+}

@@ -8,10 +8,20 @@ int main(int argc, char **argv) {
 
 	gfxInitDefault();
 	consoleInit(GFX_TOP, NULL);
+	
+	wavFile wav;
+	Result ret;
+	
+	ret = loadWav("/test.wav", &wav, 2);
+	if (ret != 0)
+		goto exit;
+	
+	printWav(&wav);
+	deleteWav(&wav);
 
-	printf("Hello 3DS World!");
-
-
+	exit:
+	printf("Test. Press the START button to exit.\n");
+	
 	// Main loop
 	while (aptMainLoop()) {
 
