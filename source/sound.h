@@ -41,10 +41,12 @@ audioStream *streaming[24];
 Result loadWav(const char *path, wavFile *wav, int streamChunkSize);
 void deleteWav(wavFile *wav);
 
-Result playWav(wavFile *file, int channel);
+Result playWav(wavFile *file, int channel, bool loop);
 void printWav(wavFile *wav);
 
-Result stopWav(int channel);
+void updateChannels();
+
+void stopWav(int channel);
 Result stopAll();
 
 #endif

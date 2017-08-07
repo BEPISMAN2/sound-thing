@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <3ds.h>
@@ -136,6 +137,33 @@ Result loadWav(const char *path, wavFile *wav, int streamChunkSize) {
 void deleteWav(wavFile *wav) {
 	linearFree(wav->data);
 	fclose(wav->file);
+}
+
+Result playWav(wavFile *wav, int channel, bool loop) {
+	ndspWaveBuf *wbuf;
+	
+	stopWav(channel);
+	ndspChnReset(channel);
+	ndspChnSetRate(channel, wav->rate);
+	ndspChnInitParams(channel);
+	ndspChnSetFormat(channel, NDSP_CHANNELS(wav->channels) | NDSP_ENCODING(wav->encoding));
+	
+	wbuf = calloc(1, sizeof(ndspWaveBuf));
+	
+	wbuf->data_vaddr = wav->data;
+	wbuf->nsamples = wav->chunkNSamples;
+	wbuf->looping = (wav->chunkSize < wav->size) ? false : loop;
+	
+	Result ret = DSP_FlushDataCache((u32*)wav->data, wav->chunkSize);
+	ndspChnWaveBufAdd(channel, wbuf);
+	
+	channels[channel] = wav;
+	
+	return ret;
+}
+
+void stopWav(int channel) {
+	ndspChnWaveBufClear(channel);
 }
 
 void printWav(wavFile *wav) {
