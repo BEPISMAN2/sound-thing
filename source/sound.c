@@ -12,6 +12,8 @@ Result loadWav(const char *path, wavFile *wav, int streamChunkSize) {
 	
 	int ckSize;
 	int format;
+	u32 rate;
+	u32 size;
 	
 	FILE *fp = fopen(path, "rb");
 	if (!fp) {
@@ -24,7 +26,7 @@ Result loadWav(const char *path, wavFile *wav, int streamChunkSize) {
 	// read magic RIFF
 	fseek(fp, 0, SEEK_SET);
 	fread(&magic, 4, 1, fp);
-	if (strcmp(magic, "RIFF") != 0) {
+	if (strncmp(magic, "RIFF", 4) != 0) {
 		fprintf(stderr, "error: file invalid (RIFF)\n");
 		return -1;
 	}
@@ -32,7 +34,7 @@ Result loadWav(const char *path, wavFile *wav, int streamChunkSize) {
 	// read magic WAVE
 	fseek(fp, 8, SEEK_SET);
 	fread(&magic, 4, 1, fp);
-	if (strcmp(magic, "WAVE") != 0) {
+	if (strncmp(magic, "WAVE", 4) != 0) {
 		fprintf(stderr, "error: file invalid (WAVE)\n");
 		return -1;
 	}
@@ -40,23 +42,23 @@ Result loadWav(const char *path, wavFile *wav, int streamChunkSize) {
 	// check fmt marker
 	fseek(fp, 12, SEEK_SET);
 	fread(&magic, 4, 1, fp);
-	if (strcmp(magic, "fmt\0") != 0) {
+	if (strncmp(magic, "fmt", 3) != 0) {
 		fprintf(stderr, "error: file invalid (fmt)\n");
 		return -1;
 	}
 	
 	// check chunk size
 	fseek(fp, 16, SEEK_SET);
-	fread(&ckSize, 4, 1, fp);
-	if (ckSize != 16) {
+	fread(&magic, 4, 1, fp);
+	if (*magic != 16) {
 		fprintf(stderr, "error: ckSize must be 16 for PCM\n");
 		return -1;
 	}
 	
 	// check format
 	fseek(fp, 20, SEEK_SET);
-	fread(&format, 2, 1, fp);
-	if (format != 0x0001) {
+	fread(&magic, 2, 1, fp);
+	if (*magic != 0x0001) {
 		fprintf(stderr, "error: invalid format\n");
 		return -1;
 	}
@@ -69,31 +71,32 @@ Result loadWav(const char *path, wavFile *wav, int streamChunkSize) {
 	
 	// get sample rate
 	fseek(fp, 24, SEEK_SET);
-	fread(&wav->rate, 4, 1, fp);
+	fread(&rate, 4, 1, fp);
+	wav->rate = rate;
 	
 	// get byte per block
 	fseek(fp, 32, SEEK_SET);
 	fread(&bytePerBlock, 2, 1, fp);
 	
 	// get bits per sample, convert to byte per sample
-	fseek(fp, 24, SEEK_SET);
+	fseek(fp, 34, SEEK_SET);
 	fread(&bytePerSample, 2, 1, fp);
 	bytePerSample /= 8;
 	
 	// get size of data
-	fseek(fp, 40, SEEK_SET);
-	fread(&wav->size, 4, 1, fp);
-	
+	fseek(fp, 0, SEEK_END);
+	size = ftell(fp);
+	wav->size = size;
 	
 	// -- do a few calculations --
 	wav->nSamples = wav->size / bytePerBlock;
 	wav->bytePerSample = bytePerSample / wav->channels;
-	if (bytePerSample == 8)
+	if (bytePerSample == 1)
 		wav->encoding = NDSP_ENCODING_PCM8;
-	else if (bytePerSample== 16)
+	else if (bytePerSample== 2)
 		wav->encoding = NDSP_ENCODING_PCM16;
 	else {
-		fprintf(stderr, "error: invalid encoding; must be either PCM8 or PCM16\n");
+		fprintf(stderr, "error: invalid encoding; must be either PCM8 or PCM16, bytePerSample = %d\n", bytePerSample);
 		return -1;
 	}
 	
@@ -157,5 +160,6 @@ void printWav(wavFile *wav) {
 	printf("Byte Per Sample: %d\n", wav->bytePerSample);
 	printf("Stream Chunk Size: %d\n", wav->chunkSize);
 	printf("Number of Samples per Chunk: %d\n", wav->chunkNSamples);
+	printf("File Size: %d\n", wav->fileSize);
 	printf("-- END PRINT --\n\n");
 }
