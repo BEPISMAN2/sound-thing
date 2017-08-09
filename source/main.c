@@ -23,7 +23,7 @@ int main(int argc, char **argv) {
 	wavFile wav;
 	Result ret;
 	
-	ret = loadWav("/test.wav", &wav, 2);
+	ret = loadWav("/test.wav", &wav, 0.1);
 	if (ret != 0)
 		goto exit;
 	
