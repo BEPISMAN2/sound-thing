@@ -6,6 +6,8 @@
 
 void waitForInput() {
 	while (aptMainLoop()) {
+		updateChannels();
+		
 		hidScanInput();
 		if (hidKeysUp() & KEY_START)
 			break;
@@ -21,7 +23,7 @@ int main(int argc, char **argv) {
 	wavFile wav;
 	Result ret;
 	
-	ret = loadWav("/test.wav", &wav, -1);
+	ret = loadWav("/test.wav", &wav, 2);
 	if (ret != 0)
 		goto exit;
 	
@@ -37,6 +39,7 @@ int main(int argc, char **argv) {
 	} 
 	
 	printf("Playing back WAV...\n");
+	
 
 	exit:
 	printf("Test. Press the START button to exit.\n");

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <stdbool.h>
 #include <3ds.h>
 
 #include "sound.h"
@@ -158,6 +159,31 @@ Result playWav(wavFile *wav, int channel, bool loop) {
 	ndspChnWaveBufAdd(channel, wbuf);
 	
 	channels[channel] = wav;
+
+	// free previous stream
+	if (streaming[channel] != NULL) {
+		free(streaming[channel]);
+		streaming[channel] = NULL;
+	}
+	
+	// create new stream
+	if (wav->chunkSize < wav->fileSize) { 
+		audioStream *stream = calloc(1, sizeof(audioStream));
+		stream->loop = loop;
+		stream->audio = wav;
+		stream->nextWaveBuf = wbuf;
+	
+		if (linearSpaceFree() < wav->chunkSize * 2) {
+			fprintf(stderr, "error: not enough linear memory available\n");
+			return -1;
+		}
+	
+		stream->nextData = linearAlloc(wav->chunkSize);
+		stream->prevData = linearAlloc(wav->chunkSize);
+		stream->filePos = wav->filePos;
+		stream->done = false;
+		streaming[channel] = stream;
+	}
 	
 	return ret;
 }
@@ -190,4 +216,107 @@ void printWav(wavFile *wav) {
 	printf("Number of Samples per Chunk: %d\n", wav->chunkNSamples);
 	printf("File Size: %d\n", wav->fileSize);
 	printf("-- END PRINT --\n\n");
+}
+
+void updateChannels() {
+	for (int i = 0; i < 24; i++) {
+		if (streaming[i] == NULL) {
+			continue;
+		}
+		
+		//printf("channel %d is not null\n", i);
+		
+		audioStream *stream = streaming[i];
+		wavFile *wav = stream->audio;
+		if (stream->done == true) {
+			printf("stream %d is done\n", i);
+			continue;
+		}
+		
+		//printf("wavebuf seq: %d, nextwavebuf seq: %d\n", ndspChnGetWaveBufSeq(i), stream->nextWaveBuf->sequence_id); 
+		
+		// next chunk has started to play, load it into memory
+		if (stream->nextWaveBuf != NULL && ndspChnGetWaveBufSeq(i) == stream->nextWaveBuf->sequence_id) {
+			printf("loading next chunk into memory...\n");
+			stream->prevStartTime = stream->prevStartTime + (double) (wav->chunkNSamples) / wav->rate;
+			
+			if (!stream->eof) {
+				// swap these buffers, set nextData (about to play) to prevData (playing now)
+				char *nextData = stream->nextData;
+				char *prevData = stream->prevData;
+				stream->prevData = nextData;
+				stream->nextData = prevData;
+				stream->prevWaveBuf = stream->nextWaveBuf;
+				
+				// recalculate chunk size and number of samples
+				u32 chunkSize = fmin(wav->fileSize - wav->filePos, wav->chunkSize);
+				u32 chunkNSamples = chunkSize / wav->channels / wav->bytePerSample;
+				
+				// read next chunk into memory (will play after this chunk is done playing)
+				fseek(wav->file, stream->filePos, SEEK_SET);
+				fread(stream->nextData, chunkSize, 1, wav->file);
+				stream->filePos = ftell(wav->file);
+				if (stream->filePos == wav->fileSize)
+					stream->eof = true;
+				
+				// create new wavebuf
+				ndspWaveBuf *wbuf = calloc(1, sizeof(ndspWaveBuf));
+				wbuf->data_vaddr = stream->nextData;
+				wbuf->nsamples = chunkNSamples;
+				wbuf->looping = false;
+				
+				// flush that shit
+				DSP_FlushDataCache((u32*)wbuf->data_vaddr, chunkSize);
+				ndspChnWaveBufAdd(i, wbuf);
+				
+				// set next wave buf
+				stream->nextWaveBuf = wbuf;
+			}
+		}
+		
+		//printf("Next chunk is NOT playing...\n");
+		
+		// it's NULL and not playing anymore, free this
+		if (stream->prevWaveBuf != NULL && ndspChnGetWaveBufSeq(i) != stream->prevWaveBuf->sequence_id) {
+			printf("Freeing old waveBuf...\n");
+			free(stream->prevWaveBuf);
+			stream->prevWaveBuf = NULL;
+		}
+		
+		//printf("prevWaveBuf is NOT null\n");
+		
+		// we have reached the end of the file
+		if (stream->prevWaveBuf == NULL && stream->nextWaveBuf != NULL && ndspChnGetWaveBufSeq(i) != stream->nextWaveBuf->sequence_id && stream->eof) {
+			free(stream->nextWaveBuf);
+			stream->nextWaveBuf = NULL;
+			
+			if (!stream->loop) {
+				linearFree(stream->prevData);
+				stream->prevData = NULL;
+				
+				linearFree(stream->nextData);
+				stream->nextData = NULL;
+				
+				stream->done = true;
+				printf("stream is now done\n");
+			} else {
+				ndspWaveBuf *wbuf = calloc(1, sizeof(ndspWaveBuf));
+				
+				wbuf->data_vaddr = wav->data;
+				wbuf->nsamples = wav->chunkNSamples;
+				wbuf->looping = false;
+				
+				DSP_FlushDataCache((u32*)wbuf->data_vaddr, wav->chunkSize);
+				ndspChnWaveBufAdd(i, wbuf);
+				
+				stream->prevStartTime = 0;
+				stream->eof = false;
+				stream->filePos = wav->filePos;
+			}
+		}
+		
+		//printf("EOF not reached...\n");
+	}
+	
+	return 0;
 }
