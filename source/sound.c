@@ -120,8 +120,8 @@ Result loadWav(const char *path, wavFile *wav, double streamChunkSize) {
 	wav->data = (char*)linearAlloc(wav->chunkSize);
 	
 	// read the actual audio data into memory
-	fseek(fp, 44, SEEK_SET);
-	fread(wav->data, wav->chunkSize, 1, fp);
+	//fseek(fp, 44, SEEK_SET);
+	//fread(wav->data, wav->chunkSize, 1, fp);
 	
 	// get file current position
 	wav->filePos = ftell(fp);
@@ -132,11 +132,28 @@ Result loadWav(const char *path, wavFile *wav, double streamChunkSize) {
 	
 	wav->file = fp;
 	
+	// get chunk data
+	printf("allocating chunk data...\n");
+	wav->chunkData = malloc(sizeof(char*) * ceil(wav->fileSize / wav->chunkSize));
+	for (int i = 0; i < ceil(wav->fileSize / wav->chunkSize); i++) {
+		wav->chunkData[i] = malloc(wav->chunkSize);
+	}
+	
+	printf("reading chunk data, %d chunks...\n", (int)ceil(wav->fileSize / wav->chunkSize));
+	fseek(fp, 44, SEEK_SET);
+	for (int i = 0; i < (int)ceil(wav->fileSize / wav->chunkSize); i++) {
+		fread(wav->chunkData[i], wav->chunkSize, 1, fp);
+	}
+	
+	printf("copying chunk data into linear buffer\n");
+	memcpy(wav->data, wav->chunkData[0], wav->chunkSize);
+	
 	return 0;
 }
 
 void deleteWav(wavFile *wav) {
 	linearFree(wav->data);
+	free(wav->chunkData);
 	fclose(wav->file);
 }
 
@@ -178,10 +195,11 @@ Result playWav(wavFile *wav, int channel, bool loop) {
 			return -1;
 		}
 	
-		stream->nextData = linearAlloc(wav->chunkSize);
-		stream->prevData = linearAlloc(wav->chunkSize);
+		stream->nextData = (char*)linearAlloc(wav->chunkSize);
+		stream->prevData = (char*)linearAlloc(wav->chunkSize);
 		stream->filePos = wav->filePos;
 		stream->done = false;
+		stream->chunkIndex = 0;
 		streaming[channel] = stream;
 	}
 	
@@ -219,6 +237,8 @@ void printWav(wavFile *wav) {
 }
 
 void updateChannels() {
+	Result ret;
+	
 	for (int i = 0; i < 24; i++) {
 		if (streaming[i] == NULL) {
 			continue;
@@ -229,7 +249,7 @@ void updateChannels() {
 		audioStream *stream = streaming[i];
 		wavFile *wav = stream->audio;
 		if (stream->done == true) {
-			//printf("stream %d is done\n", i);
+			printf("stream %d is done\n", i);
 			continue;
 		}
 		
@@ -252,6 +272,9 @@ void updateChannels() {
 				u32 chunkSize = fmin(wav->fileSize - stream->filePos, wav->chunkSize);
 				u32 chunkNSamples = chunkSize / wav->channels / wav->bytePerSample;
 				
+				// done in place of reading from file
+				stream->filePos += wav->chunkSize;
+				
 				// read next chunk into memory (will play after this chunk is done playing)
 				fseek(wav->file, stream->filePos, SEEK_SET);
 				fread(stream->nextData, chunkSize, 1, wav->file);
@@ -262,6 +285,14 @@ void updateChannels() {
 				
 				//printf("filepos: %d\n", stream->filePos);
 				
+				/*
+				stream->chunkIndex++;
+				printf("chunk index %d\n", stream->chunkIndex);
+				//memset(stream->nextData, 0, chunkSize);
+				memcpy(stream->nextData, wav->chunkData[stream->chunkIndex], chunkSize);
+				if ( (int)ceil(wav->fileSize / wav->chunkSize) == stream->chunkIndex )
+					stream->eof = true;
+				*/
 				// create new wavebuf
 				ndspWaveBuf *wbuf = calloc(1, sizeof(ndspWaveBuf));
 				wbuf->data_vaddr = stream->nextData;
@@ -269,8 +300,13 @@ void updateChannels() {
 				wbuf->looping = false;
 				
 				// flush that shit
-				DSP_FlushDataCache((u32*)stream->nextData, chunkSize);
+				ret = DSP_FlushDataCache((u32*)stream->nextData, chunkSize);
 				ndspChnWaveBufAdd(i, wbuf);
+				
+				
+				if (ret != 0) {
+					printf("note: DSP_FlushDataCache failed, result: 0x%x\n", ret);
+				}
 				
 				// set next wave buf
 				stream->nextWaveBuf = wbuf;
@@ -318,6 +354,7 @@ void updateChannels() {
 				stream->eof = false;
 				stream->filePos = wav->filePos;
 				stream->nextWaveBuf = wbuf;
+				stream->chunkIndex = 0;
 			}
 		}
 		

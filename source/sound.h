@@ -17,12 +17,16 @@ typedef struct {
 	u16 bytePerSample;
 	u32 chunkSize;
 	u32 chunkNSamples;
+	
+	char **chunkData;
 } wavFile;
 
 typedef struct {
 	wavFile *audio;
 	bool loop;
 	long filePos;
+	
+	int chunkIndex;
 	
 	double prevStartTime;
 	bool eof;
