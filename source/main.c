@@ -5,27 +5,32 @@
 #include "sound.h"
 
 void waitForInput() {
-	while (aptMainLoop()) {
-		updateChannels();
-		
+	while (aptMainLoop()) {	
 		hidScanInput();
 		if (hidKeysUp() & KEY_START)
 			break;
+		
+		gfxFlushBuffers();
+		gfxSwapBuffers();
 	}
 }
 
 int main(int argc, char **argv) {
 
 	gfxInitDefault();
-	ndspInit();
 	consoleInit(GFX_TOP, NULL);
 	
-	wavFile wav;
-	Result ret;
-	
-	ret = loadWav("/test.wav", &wav, 0.1);
+	Result ret = soundInit();
 	if (ret != 0)
 		goto exit;
+	
+	wavFile wav;
+	
+	ret = loadWav("/test.wav", &wav, 0.1);
+	if (ret != 0) {
+		fprintf(stderr, "error: could not load file\n");
+		goto exit;
+	}
 	
 	printWav(&wav);
 	printf("Press the START button to start playback.\n");
@@ -45,10 +50,12 @@ int main(int argc, char **argv) {
 	printf("Test. Press the START button to exit.\n");
 	waitForInput();
 	
-	stopWav(0);
-	deleteWav(&wav);
+	if (ret != 0) {
+		stopWav(0);
+		deleteWav(&wav);
+	}
 	
-	ndspExit();
+	soundExit();
 	gfxExit();
 	return 0;
 }

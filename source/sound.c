@@ -7,6 +7,62 @@
 
 #include "sound.h"
 
+#define STACKSIZE (32 * 1024) // taken from ctrmus
+
+bool runSoundThread = false;
+bool isInitialized = false;
+
+typedef struct {
+	Thread thread;
+	Handle mutex;
+} threadStruct;
+
+
+threadStruct* tRef;
+
+Result soundInit() {
+	// initialize NDSP
+	if (isInitialized)
+		return 0;
+	
+	Result ret = ndspInit();
+	if (ret) {
+		fprintf(stderr, "error: could not initialize NDSP. 0x%x\n", ret);
+		return ret;
+	}
+	
+	threadStruct *t = malloc(sizeof(threadStruct));
+	
+	svcCreateMutex(&t->mutex, false);
+	
+	runSoundThread = true;
+	
+	s32 prio;
+	svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
+	printf("main thread prio: %d\n", prio);
+	
+	t->thread = threadCreate(updateChannels, (void*) t, STACKSIZE, prio - 1, -2, false);
+	printf("thread created: %p\n", t);
+	
+	
+	isInitialized = true;
+	tRef = t;
+	
+	return 0;
+}
+
+void soundExit() {
+	if (isInitialized)
+		return;
+	
+	svcWaitSynchronization(tRef->mutex, U64_MAX);
+	threadJoin(tRef->thread, U64_MAX);
+	threadFree(tRef->thread);
+	
+	svcCloseHandle(tRef->mutex);
+	ndspExit();
+}
+
 Result loadWav(const char *path, wavFile *wav, double streamChunkSize) {
 	u16 bytePerBlock;
 	u16 bytePerSample;
@@ -68,8 +124,14 @@ Result loadWav(const char *path, wavFile *wav, double streamChunkSize) {
 	// -- now we actually get to do shit --
 	
 	// get number of audio channels (stereo/mono)
+	u16 channels;
 	fseek(fp, 22, SEEK_SET);
-	fread(&wav->channels, 2, 1, fp);
+	fread(&channels, 2, 1, fp);
+	if (channels > 2 || channels < 1) {
+		fprintf(stderr, "error: must have 1 or 2 channels, channels detected: %d\n", channels);
+		return -1;
+	}
+	wav->channels = channels;
 	
 	// get sample rate
 	fseek(fp, 24, SEEK_SET);
@@ -218,7 +280,16 @@ void printWav(wavFile *wav) {
 	printf("-- END PRINT --\n\n");
 }
 
-void updateChannels() {
+void updateChannels(void *arg) {
+	threadStruct *t = (threadStruct*) arg;
+	printf("thread is running\n");
+	while (runSoundThread) {
+		
+	
+	
+	svcSleepThread(100 * 10000);
+	svcWaitSynchronization(t->mutex, U64_MAX);
+		
 	for (int i = 0; i < 24; i++) {
 		if (streaming[i] == NULL) {
 			continue;
@@ -322,5 +393,9 @@ void updateChannels() {
 		}
 		
 		//printf("EOF not reached...\n");
+	}
+	
+	svcReleaseMutex(t->mutex);
+	
 	}
 }

@@ -7,7 +7,7 @@ typedef struct {
 	int filePos;
 	
 	float rate;
-	u32 channels;
+	u16 channels;
 	u32 encoding;
 	
 	u32 nSamples;
@@ -37,6 +37,9 @@ typedef struct {
 
 wavFile *channels[24];
 audioStream *streaming[24];
+
+Result soundInit();
+void soundExit();
 
 Result loadWav(const char *path, wavFile *wav, double streamChunkSize);
 void deleteWav(wavFile *wav);
